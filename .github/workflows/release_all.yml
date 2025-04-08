@@ -1,0 +1,159 @@
+name: Release Build ALL Platforms
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        target: 
+          - x86_64-linux-gnu
+          - aarch64-linux-gnu
+          - riscv64-linux-gnu
+          - x86_64-windows-gnu
+          - aarch64-windows-gnu
+          - x86_64-macos
+          - aarch64-macos
+    env:
+      BUILD_DATE: ${{ github.workflow }}-${{ github.run_id }}-$(date -u +'%Y_%m_%d')
+      PATH_VERSION: r32
+      OPENCV_VERSION: 4.11.0
+    runs-on: ${{ 
+      contains(matrix.target, 'windows') && 'windows-2022' || 
+      contains(matrix.target, 'macos') && 'macos-latest' || 
+      'ubuntu-22.04' 
+    }}
+    permissions:
+      contents: write    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: zig-build
+          fetch-depth: 0  # 获取所有提交和Tag
+
+      - name: Download OpenCV Mobile
+        run: |
+          if [ ! -d "opencv-mobile" ]; then
+            wget https://github.com/nihui/opencv-mobile/releases/download/v32/opencv-mobile-4.11.0.zip
+            unzip opencv-mobile-4.11.0.zip -d opencv-mobile
+          fi
+
+      - name: Setup Environment
+        if: contains(matrix.target, 'windows')
+        shell: pwsh
+        run: |
+          choco install cmake -y
+
+      - name: Setup MSVC 2022
+        if: contains(matrix.target, 'windows')
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          toolchain: vs2022
+
+      - name: Install Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake \
+            make \
+            gcc-riscv64-linux-gnu \
+            libc6-dev-riscv64-cross
+
+      - name: Setup Zig
+        uses: korandoru/setup-zig@v1
+        with:
+          zig-version: 0.14.0
+
+      - name: Set Last Commit Date
+        id: last-commit-date
+        run: |
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          FORMATTED_DATE=$(date -d "$LAST_COMMIT_DATE" +%Y_%m_%d)
+          echo "LAST_COMMIT_DATE=$FORMATTED_DATE" >> $GITHUB_ENV
+
+      - name: Build for ${{ matrix.target }}
+        if: contains(matrix.target, 'windows')
+        shell: pwsh
+        run: |
+          $OUTPUT_DIR = "install_opencv_${{ matrix.target }}"
+          .\build_with_zig.ps1 --target=${{ matrix.target }}
+          if (Test-Path $OUTPUT_DIR) {
+            $RELEASE_NAME = "opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
+            New-Item -ItemType Directory -Path "release/artifacts" -Force
+            Move-Item -Path $OUTPUT_DIR -Destination "release/artifacts/$RELEASE_NAME"
+            Compress-Archive -Path "release/artifacts/$RELEASE_NAME" -DestinationPath "release/artifacts/$RELEASE_NAME.zip"
+          } else {
+            Write-Error "Output directory $OUTPUT_DIR not found!"
+            exit 1
+          }
+
+      - name: Build for ${{ matrix.target }}
+        if: runner.os != 'Windows'
+        run: |
+          export OUTPUT_DIR="install_opencv_${{ matrix.target }}"
+
+          chmod +x *.sh
+          ./build_with_zig.sh --target=${{ matrix.target }}
+
+          if [ -d "$OUTPUT_DIR" ]; then
+            RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
+            mkdir -p release/artifacts
+            mv "$OUTPUT_DIR" "release/artifacts/$RELEASE_NAME"
+            tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
+          else
+            echo "::error::Output directory $OUTPUT_DIR not found!"
+            exit 1
+          fi
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts-${{ matrix.target }}
+          path: release/artifacts/*.${{ contains(matrix.target, 'windows') && 'zip' || 'tar.gz' }}
+          retention-days: 1
+
+  release:
+    runs-on: ubuntu-22.04
+    needs: build
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Set Last Commit Date
+        id: last-commit-date
+        run: |
+          LAST_COMMIT_DATE=$(git log -1 --format=%cd --date=short)
+          FORMATTED_DATE=$(date -d "$LAST_COMMIT_DATE" +%Y_%m_%d)
+          echo "LAST_COMMIT_DATE=$FORMATTED_DATE" >> $GITHUB_ENV
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: release-artifacts-*
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: release-${{ env.PATH_VERSION }}
+          name: Release ${{ env.PATH_VERSION }}
+          body: |
+            Automatic build for commit ${{ github.sha }}
+            Built on: ${{ env.PATH_VERSION }}
+          draft: false
+          prerelease: false
+          overwrite: true  # 覆盖现有Release和Tag
+          files: |
+            release-artifacts/*
