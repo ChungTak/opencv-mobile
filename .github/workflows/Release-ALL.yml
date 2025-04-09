@@ -9,18 +9,18 @@ jobs:
         include:
           - target: x86_64-linux-gnu
             os: ubuntu-22.04
-          - target: aarch64-linux-gnu
-            os: ubuntu-22.04
-          - target: riscv64-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-windows-gnu
-            os: windows-2022
-          - target: aarch64-windows-gnu
-            os: windows-2022
-          - target: x86_64-macos
-            os: macos-13 # 或者指定版本如 macos-13, macos-14
-          - target: aarch64-macos
-            os: macos-13 # 或者指定版本如 macos-13, macos-14
+          #- target: aarch64-linux-gnu
+          #  os: ubuntu-22.04
+          #- target: riscv64-linux-gnu
+          #  os: ubuntu-22.04
+          #- target: x86_64-windows-gnu
+          #  os: windows-2022
+          #- target: aarch64-windows-gnu
+          #  os: windows-2022
+          #- target: x86_64-macos
+          #  os: macos-13 # 或者指定版本如 macos-13, macos-14
+          #- target: aarch64-macos
+          #  os: macos-13 # 或者指定版本如 macos-13, macos-14
     runs-on: ${{ matrix.os }} # 动态设置运行环境
     permissions:
       contents: write
