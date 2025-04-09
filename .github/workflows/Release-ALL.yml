@@ -56,6 +56,7 @@ jobs:
               exit 1
             }
           else
+            echo 'curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"'
             curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"
             echo "Extracting OpenCV using unzip..."
             unzip "${{ env.OPENCV_ZIP_FILE }}"
