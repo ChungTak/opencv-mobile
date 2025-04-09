@@ -2,6 +2,7 @@ name: Release Build ALL Platforms
 
 on:
   workflow_dispatch:
+
 jobs:
   build:
     strategy:
@@ -9,18 +10,18 @@ jobs:
         include:
           - target: x86_64-linux-gnu
             os: ubuntu-22.04
-          #- target: aarch64-linux-gnu
-          #  os: ubuntu-22.04
-          #- target: riscv64-linux-gnu
-          #  os: ubuntu-22.04
-          #- target: x86_64-windows-gnu
-          #  os: windows-2022
-          #- target: aarch64-windows-gnu
-          #  os: windows-2022
-          #- target: x86_64-macos
-          #  os: macos-13 # 或者指定版本如 macos-13, macos-14
-          #- target: aarch64-macos
-          #  os: macos-13 # 或者指定版本如 macos-13, macos-14
+          - target: aarch64-linux-gnu
+            os: ubuntu-22.04
+          - target: riscv64-linux-gnu
+            os: ubuntu-22.04
+          - target: x86_64-windows-gnu
+            os: windows-2022
+          - target: aarch64-windows-gnu
+            os: windows-2022
+          - target: x86_64-macos
+            os: macos-13 # 或者指定版本如 macos-13, macos-14
+          - target: aarch64-macos
+            os: macos-13 # 或者指定版本如 macos-13, macos-14
     runs-on: ${{ matrix.os }} # 动态设置运行环境
     permissions:
       contents: write
@@ -40,35 +41,69 @@ jobs:
           fetch-depth: 0 # 获取所有提交和Tag
 
       - name: Download and Extract OpenCV Mobile
-        shell: bash # 使用 bash 以便跨平台使用 curl 和 unzip/Expand-Archive 条件判断
+        # Still use bash as the outer shell for the main if [[ $RUNNER_OS ]] check
+        shell: bash
         run: |
+          echo "Downloading OpenCV from ${{ env.OPENCV_ZIP_URL }}..."
           if [[ "$RUNNER_OS" == "Windows" ]]; then
-            powershell -Command "Invoke-WebRequest -Uri ${{ env.OPENCV_ZIP_URL }} -OutFile ${{ env.OPENCV_ZIP_FILE }}"
+            # --- Windows ---
+            echo "Running PowerShell commands for download and extraction..."
+            powershell -Command "Invoke-WebRequest -Uri '${{ env.OPENCV_ZIP_URL }}' -OutFile '${{ env.OPENCV_ZIP_FILE }}'"
+
             echo "Extracting OpenCV using PowerShell..."
-            powershell -Command "Expand-Archive -Path ${{ env.OPENCV_ZIP_FILE }} -DestinationPath . -Force"
-            # Powershell 可能解压到带版本号的目录，重命名确保一致
-            # 注意：这里假设解压后的根目录名包含版本号，如果不是，请调整
-            if (Test-Path "opencv-mobile-${{ env.OPENCV_VERSION }}") {
-              powershell -Command "Move-Item -Path opencv-mobile-${{ env.OPENCV_VERSION }} -Destination ${{ env.OPENCV_DIR }}"
-            } elseif (-Not (Test-Path "${{ env.OPENCV_DIR }}")) {
-              echo "::error::Expected extracted directory not found after PowerShell extraction."
+            powershell -Command "Expand-Archive -Path '${{ env.OPENCV_ZIP_FILE }}' -DestinationPath '.' -Force"
+
+            echo "Checking and renaming extracted directory (PowerShell)..."
+            # Encapsulate the conditional logic within powershell -Command
+            powershell -Command "
+              \$extractedDirWithVersion = 'opencv-mobile-${{ env.OPENCV_VERSION }}'
+              \$targetDir = '${{ env.OPENCV_DIR }}'
+              Write-Host \"Checking for '\$extractedDirWithVersion' and '\$targetDir'\"
+              if (Test-Path \$extractedDirWithVersion) {
+                  Write-Host \"Found '\$extractedDirWithVersion', renaming to '\$targetDir'...\"
+                  Move-Item -Path \$extractedDirWithVersion -Destination \$targetDir -Force
+                  Write-Host \"Renamed.\"
+              } elseif (-Not (Test-Path \$targetDir)) {
+                  Write-Error \"Directory '\$targetDir' not found after extraction, and '\$extractedDirWithVersion' was not found either.\"
+                  exit 1 # Fail the step
+              } else {
+                  Write-Host \"Directory '\$targetDir' already exists or was named correctly during extraction.\"
+              }
+            "
+            # Check if the powershell command above exited with an error
+            if [[ $? -ne 0 ]]; then
+              echo "::error::PowerShell directory check/rename failed."
               exit 1
-            }
+            fi
+
           else
+            # --- Linux/macOS ---
+            echo "Running curl/unzip commands for download and extraction..."
             curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"
             echo "Extracting OpenCV using unzip..."
             unzip "${{ env.OPENCV_ZIP_FILE }}"
-            # Unzip 可能解压到带版本号的目录，重命名确保一致
-            # 注意：这里假设解压后的根目录名包含版本号，如果不是，请调整
-            if [ -d "opencv-mobile-${{ env.OPENCV_VERSION }}" ]; then
-               mv "opencv-mobile-${{ env.OPENCV_VERSION }}" "${{ env.OPENCV_DIR }}"
-            elif [ ! -d "${{ env.OPENCV_DIR }}" ]; then
-              echo "::error::Expected extracted directory not found after unzip."
+
+            echo "Checking and renaming extracted directory (bash)..."
+            extracted_dir_with_version="opencv-mobile-${{ env.OPENCV_VERSION }}"
+            target_dir="${{ env.OPENCV_DIR }}"
+            echo "Checking for '$extracted_dir_with_version' and '$target_dir'"
+            if [ -d "$extracted_dir_with_version" ]; then
+               echo "Found '$extracted_dir_with_version', renaming to '$target_dir'..."
+               mv "$extracted_dir_with_version" "$target_dir"
+               echo "Renamed."
+            elif [ ! -d "$target_dir" ]; then
+              echo "::error::Directory '$target_dir' not found after extraction, and '$extracted_dir_with_version' was not found either."
               exit 1
+            else
+               echo "Directory '$target_dir' already exists or was named correctly during extraction."
             fi
           fi
-          echo "OpenCV extracted to ${{ env.OPENCV_DIR }}"
-          rm "${{ env.OPENCV_ZIP_FILE }}" # 清理 zip 文件
+
+          echo "OpenCV should now be in '${{ env.OPENCV_DIR }}'"
+          ls -l # List files to help debug if needed
+          echo "Cleaning up zip file..."
+          rm "${{ env.OPENCV_ZIP_FILE }}"
+          echo "Cleanup complete."
 
       # --- Linux Specific Setup ---
       - name: Install Linux Dependencies
