@@ -42,10 +42,6 @@ jobs:
       - name: Download and Extract OpenCV Mobile
         shell: bash # 使用 bash 以便跨平台使用 curl 和 unzip/Expand-Archive 条件判断
         run: |
-          echo "Downloading OpenCV from ${{ env.OPENCV_ZIP_URL }}..."
-          echo $RUNNER_OS
-          echo ${{ runner.os }}
-          echo "$RUNNER_OS" == "Windows"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             powershell -Command "Invoke-WebRequest -Uri ${{ env.OPENCV_ZIP_URL }} -OutFile ${{ env.OPENCV_ZIP_FILE }}"
             echo "Extracting OpenCV using PowerShell..."
@@ -59,7 +55,6 @@ jobs:
               exit 1
             }
           else
-            echo 'curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"'
             curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"
             echo "Extracting OpenCV using unzip..."
             unzip "${{ env.OPENCV_ZIP_FILE }}"
