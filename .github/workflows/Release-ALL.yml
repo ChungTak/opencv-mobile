@@ -43,6 +43,9 @@ jobs:
         shell: bash # 使用 bash 以便跨平台使用 curl 和 unzip/Expand-Archive 条件判断
         run: |
           echo "Downloading OpenCV from ${{ env.OPENCV_ZIP_URL }}..."
+          echo $RUNNER_OS
+          echo ${{ runner.os }}
+          echo "$RUNNER_OS" == "Windows"
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             powershell -Command "Invoke-WebRequest -Uri ${{ env.OPENCV_ZIP_URL }} -OutFile ${{ env.OPENCV_ZIP_FILE }}"
             echo "Extracting OpenCV using PowerShell..."
