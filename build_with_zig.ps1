@@ -1,4 +1,4 @@
-﻿quires -Version 5.1
+﻿#Requires -Version 5.1
 
 <#
 .SYNOPSIS
@@ -49,8 +49,6 @@ if ($Help) {
 }
 
 # --- 参数配置 ---
-# $PSScriptRoot 是脚本文件所在的目录，通常比 $PWD 更可靠
-# 如果你不是从脚本文件运行，而是直接粘贴到终端，请使用 $ProjectRoot = $PWD.Path
 $ProjectRoot = $PSScriptRoot # 或者 $ProjectRoot = (Get-Location).Path
 $OpenCVSourceDir = Join-Path -Path $ProjectRoot -ChildPath "opencv-mobile"
 $BuildType = "Release" # 或者 "Debug"
@@ -59,8 +57,6 @@ $OpenCVBuildDir = Join-Path -Path $ProjectRoot -ChildPath "build_opencv_$Target"
 $CMakeOptionsFile = Join-Path -Path $OpenCVSourceDir -ChildPath "options.txt"
 
 # --- 依赖检查 ---
-
-# 检查 Zig 是否安装
 Write-Host "检查 Zig..." -ForegroundColor Cyan
 $zigPath = Get-Command zig -ErrorAction SilentlyContinue
 if (-not $zigPath) {
@@ -69,7 +65,6 @@ if (-not $zigPath) {
 }
 Write-Host "Zig 已找到: $($zigPath.Source)" -ForegroundColor Green
 
-# 检查 CMake 是否安装
 Write-Host "检查 CMake..." -ForegroundColor Cyan
 $cmakePath = Get-Command cmake -ErrorAction SilentlyContinue
 if (-not $cmakePath) {
@@ -78,7 +73,6 @@ if (-not $cmakePath) {
 }
 Write-Host "CMake 已找到: $($cmakePath.Source)" -ForegroundColor Green
 
-# 检查源代码是否存在
 Write-Host "检查 OpenCV 源码目录..." -ForegroundColor Cyan
 if (-not (Test-Path -Path $OpenCVSourceDir -PathType Container)) {
     Write-Host "错误: OpenCV 源码目录不存在: $OpenCVSourceDir" -ForegroundColor Red
@@ -87,99 +81,95 @@ if (-not (Test-Path -Path $OpenCVSourceDir -PathType Container)) {
 }
 Write-Host "OpenCV 源码目录已找到。" -ForegroundColor Green
 
-# 检查并读取 CMake 选项文件
 Write-Host "检查 CMake 选项文件..." -ForegroundColor Cyan
 if (-not (Test-Path -Path $CMakeOptionsFile -PathType Leaf)) {
     Write-Host "错误: OpenCV cmake 选项文件不存在: $CMakeOptionsFile" -ForegroundColor Red
     exit 1
 }
 
-# 从文件读取 CMake 选项 (忽略空行和注释行)
 $CmakeOptionsFromFile = Get-Content -Path $CMakeOptionsFile | Where-Object { $_ -ne '' -and $_ -notmatch '^\s*#' }
 Write-Host "已读取 $($CmakeOptionsFromFile.Count) 个 CMake 选项。" -ForegroundColor Green
 
-
 # --- 构建准备 ---
-
-# 创建 OpenCV 构建目录 (如果不存在)
 Write-Host "创建构建目录: $OpenCVBuildDir" -ForegroundColor Cyan
 if (-not (Test-Path -Path $OpenCVBuildDir -PathType Container)) {
     New-Item -ItemType Directory -Path $OpenCVBuildDir -Force | Out-Null
 }
 
-# 进入构建目录
+# 进入构建目录 (使用 try/finally 确保 Pop-Location 总能执行)
 Push-Location $OpenCVBuildDir
+try {
+    # --- 配置 CMake ---
+    $env:CC = "zig cc -target $Target"
+    $env:CXX = "zig c++ -target $Target"
 
-# --- 配置 CMake ---
+    $cmakeArgs = @(
+        "-DCMAKE_INSTALL_PREFIX=$InstallDir",
+        "-DCMAKE_BUILD_TYPE=$BuildType"
+    )
+    $cmakeArgs += $CmakeOptionsFromFile
+    $cmakeArgs += "-DBUILD_opencv_world=OFF"
+    $cmakeArgs += $OpenCVSourceDir # 源码目录应是最后一个参数
 
-# 设置 Zig 编译器环境变量 (仅对此脚本及其子进程有效)
-# 注意: 在 PowerShell 中，直接设置 $env:VAR 即可
-$env:CC = "zig cc -target $Target"
-$env:CXX = "zig c++ -target $Target"
+    Write-Host "OpenCV-Mobile 构建配置:" -ForegroundColor Blue
+    Write-Host "  源码目录: $OpenCVSourceDir" -ForegroundColor Blue
+    Write-Host "  构建类型: $BuildType" -ForegroundColor Blue
+    Write-Host "  安装目录: $InstallDir" -ForegroundColor Blue
+    Write-Host "  目标架构: $Target" -ForegroundColor Blue
+    Write-Host "  CC: $($env:CC)" -ForegroundColor Blue
+    Write-Host "  CXX: $($env:CXX)" -ForegroundColor Blue
 
-# 构建 CMake 命令参数列表
-$cmakeArgs = @(
-    "-DCMAKE_INSTALL_PREFIX=$InstallDir",
-    "-DCMAKE_BUILD_TYPE=$BuildType"
-)
+    Write-Host "执行 CMake 配置..." -ForegroundColor Green
+    Write-Host "命令: cmake $($cmakeArgs -join ' ')" -ForegroundColor Gray # 更清晰地显示命令
+    & cmake $cmakeArgs # 使用 & 调用操作符
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "CMake 配置失败! (退出码: $LASTEXITCODE)" -ForegroundColor Red
+        exit 1 # 直接退出，因为后续步骤无法进行
+    }
+    Write-Host "CMake 配置成功。" -ForegroundColor Green
 
-# 添加从文件读取的选项
-$cmakeArgs += $CmakeOptionsFromFile
+    # --- 编译 ---
+    Write-Host "开始编译 OpenCV (使用 cmake --build)..." -ForegroundColor Green
+    & cmake --build . --config $BuildType --parallel
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "OpenCV 编译失败! (退出码: $LASTEXITCODE)" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "编译成功。" -ForegroundColor Green
 
-# 添加显式禁用的选项 (如果需要)
-$cmakeArgs += "-DBUILD_opencv_world=OFF"
+    # --- 安装 ---
+    Write-Host "开始安装 OpenCV (使用 cmake --install)..." -ForegroundColor Green
+    & cmake --install . --config $BuildType
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "安装 OpenCV 失败! (退出码: $LASTEXITCODE)" -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "CMake install 命令执行完毕。" -ForegroundColor Green # 注意：这只表示命令执行完成，不代表安装内容一定正确
 
-# 添加源码目录路径作为最后一个参数
-$cmakeArgs += $OpenCVSourceDir
+    # --- 检查安装结果 ---
+    $expectedLibDir = Join-Path $InstallDir 'lib'
+    # !! 修正 Join-Path 错误 !!
+    $expectedIncludeDir = Join-Path $InstallDir 'include\opencv4' # 将 include 和 opencv4 合并为子路径
 
-# 打印配置信息
-Write-Host "OpenCV-Mobile 构建配置:" -ForegroundColor Blue
-Write-Host "  源码目录: $OpenCVSourceDir" -ForegroundColor Blue
-Write-Host "  构建类型: $BuildType" -ForegroundColor Blue
-Write-Host "  安装目录: $InstallDir" -ForegroundColor Blue
-Write-Host "  目标架构: $Target" -ForegroundColor Blue
-Write-Host "  CC: $($env:CC)" -ForegroundColor Blue
-Write-Host "  CXX: $($env:CXX)" -ForegroundColor Blue
+    Write-Host "检查安装目录内容..." -ForegroundColor Cyan
+    if ((Test-Path -Path $InstallDir -PathType Container) `
+        -and (Test-Path -Path $expectedLibDir -PathType Container) `
+        -and (Test-Path -Path $expectedIncludeDir -PathType Container)) {
 
-# 执行 CMake 配置
-Write-Host "执行 CMake 配置..." -ForegroundColor Green
-Write-Host "命令: cmake $cmakeArgs" -ForegroundColor Gray # 显示将要执行的命令
-cmake $cmakeArgs
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "CMake 配置失败!" -ForegroundColor Red
-    Pop-Location # 确保返回原始目录
-    exit 1
+        Write-Host "安装成功!" -ForegroundColor Green
+        Write-Host "OpenCV 库文件位于: $expectedLibDir" -ForegroundColor Green
+        Write-Host "OpenCV 头文件位于: $expectedIncludeDir" -ForegroundColor Green
+        Write-Host "构建过程完成。" -ForegroundColor Green
+        exit 0 # 明确成功退出
+    } else {
+        Write-Host "安装检查失败! 预期目录未完全找到:" -ForegroundColor Red
+        Write-Host "  检查 $InstallDir : $(Test-Path -Path $InstallDir -PathType Container)" -ForegroundColor Yellow
+        Write-Host "  检查 $expectedLibDir : $(Test-Path -Path $expectedLibDir -PathType Container)" -ForegroundColor Yellow
+        Write-Host "  检查 $expectedIncludeDir : $(Test-Path -Path $expectedIncludeDir -PathType Container)" -ForegroundColor Yellow
+        exit 1 # 安装不完整，报告错误
+    }
+
+} finally {
+    # 确保无论成功还是失败，都返回到原始目录
+    Pop-Location
 }
-Write-Host "CMake 配置成功。" -ForegroundColor Green
-
-# --- 编译 ---
-# 使用 cmake --build 而不是直接调用 make/ninja/msbuild，更具可移植性
-# --parallel 会让 CMake 自动使用所有可用的核心进行并行编译
-Write-Host "开始编译 OpenCV (使用 cmake --build)..." -ForegroundColor Green
-cmake --build . --config $BuildType --parallel
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "OpenCV 编译失败!" -ForegroundColor Red
-    Pop-Location # 确保返回原始目录
-    exit 1
-}
-Write-Host "编译成功。" -ForegroundColor Green
-
-# --- 安装 ---
-# 使用 cmake --install 进行安装
-Write-Host "开始安装 OpenCV (使用 cmake --install)..." -ForegroundColor Green
-cmake --install . --config $BuildType
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "安装 OpenCV 失败!" -ForegroundColor Red
-    Pop-Location # 确保返回原始目录
-    exit 1
-}
-
-# --- 完成 ---
-Write-Host "安装成功!" -ForegroundColor Green
-Write-Host "OpenCV 库文件位于: $(Join-Path $InstallDir 'lib')" -ForegroundColor Green
-Write-Host "OpenCV 头文件位于: $(Join-Path $InstallDir 'include' 'opencv4')" -ForegroundColor Green
-
-# 返回到项目根目录
-Pop-Location
-Write-Host "构建过程完成。" -ForegroundColor Green
-exit 0
