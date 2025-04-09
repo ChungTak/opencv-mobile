@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿quires -Version 5.1
 
 <#
 .SYNOPSIS
