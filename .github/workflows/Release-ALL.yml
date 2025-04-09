@@ -154,7 +154,7 @@ jobs:
 
           chmod +x build_with_zig.sh # 确保脚本可执行
           # 传递 OpenCV 路径给脚本，假设脚本接受 --opencv_dir 参数
-          ./build_with_zig.sh --target=${{ matrix.target }} --opencv_dir=${OPENCV_INSTALL_DIR}
+          ./build_with_zig.sh --target=${{ matrix.target }}
 
           # --- Packaging ---
           if [ -d "$OUTPUT_DIR" ]; then
@@ -179,7 +179,7 @@ jobs:
 
           Write-Host "Running PowerShell build script..."
           # 传递 OpenCV 路径给脚本，假设脚本接受 -opencv_dir 参数
-          powershell -ExecutionPolicy Bypass -File ./build_with_zig.ps1 -target ${{ matrix.target }} -opencv_dir $env:OPENCV_INSTALL_DIR
+          powershell -ExecutionPolicy Bypass -File ./build_with_zig.ps1 -target ${{ matrix.target }}
 
           # --- Packaging ---
           if (Test-Path $env:OUTPUT_DIR) {
