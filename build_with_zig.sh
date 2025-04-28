@@ -138,12 +138,11 @@ eval "$CMAKE_CMD"
 
 # 编译
 echo -e "${GREEN}开始编译OpenCV...${NC}"
-make -j$(nproc)
+cmake --build . --config Release --parallel  
 
 # 安装
 echo -e "开始安装...${NC}"
-make install
-
+cmake --install . --config Release
 # 检查安装结果
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}安装成功!${NC}"
