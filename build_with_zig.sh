@@ -23,14 +23,17 @@ for arg in "$@"; do
       echo "  x86_64-linux-gnu      - x86_64 Linux (GNU libc)"
       echo "  aarch64-linux-gnu     - ARM64 Linux (GNU libc)"
       echo "  aarch64-linux-android     - ARM64 Android"
+      echo "  arm-linux-android         - ARM 32-bit Android"   
       echo "  x86-linux-android         - x86 32-bit Android"      
       echo "  x86_64-linux-android     - x86_64 Android"
-      echo "  arm-linux-android         - ARM 32-bit Android"   
       echo "  x86_64-windows-gnu    - x86_64 Windows (MinGW)"
       echo "  x86_64-macos          - x86_64 macOS"
       echo "  aarch64-macos         - ARM64 macOS"
       echo "  riscv64-linux-gnu      - RISC-V 64-bit Linux"
       echo "  loongarch64-linux-gnu   - LoongArch64 Linux"
+      echo "  aarch64-linux-harmonyos     - ARM64 HarmonyOS"
+      echo "  arm-linux-harmonyos         - ARM 32-bit HarmonyOS"  
+      echo "  x86_64-linux-harmonyos     - x86_64 HarmonyOS"
       exit 0
       ;;
   esac
@@ -113,6 +116,34 @@ if [[ "$TARGET" == *"-linux-android"* ]]; then
 
     # toolchain 参数必须最前，其它参数和源码目录最后
     CMAKE_CMD="cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_TOOLCHAIN_FILE -DANDROID_ABI=$ANDROID_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+elif [[ "$TARGET" == *"-linux-harmonyos"* ]]; then
+    export HARMONYOS_SDK_ROOT="${HARMONYOS_SDK_HOME:-/dataset/datavol/sdk/harmonyos/ohos-sdk/linux/native-linux-x64-4.1.9.4-Release/native}"
+    TOOLCHAIN=$HARMONYOS_SDK_ROOT/llvm
+    export PATH=$TOOLCHAIN/bin:$PATH
+    HARMONYOS_TOOLCHAIN_FILE="$HARMONYOS_SDK_ROOT/build/cmake/ohos.toolchain.cmake"
+
+    case "$TARGET" in
+        aarch64-linux-harmonyos)
+            OHOS_ARCH=arm64-v8a
+            ;;
+        arm-linux-harmonyos)
+            OHOS_ARCH=armeabi-v7a
+            ;;
+        x86_64-linux-harmonyos)
+            OHOS_ARCH=x86_64
+            ;;
+        x86-linux-harmonyos)
+            OHOS_ARCH=x86
+            ;;
+        *)
+            echo -e "${RED}未知的 HarmonyOS 架构: $TARGET${NC}"
+            exit 1
+            ;;
+    esac
+
+    # toolchain 参数必须最前，其它参数和源码目录最后
+    CMAKE_CMD="cmake -DCMAKE_TOOLCHAIN_FILE=$HARMONYOS_TOOLCHAIN_FILE -DOHOS_ARCH=$OHOS_ARCH -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+
 else
     export CC="zig cc -target $TARGET"
     export CXX="zig c++ -target $TARGET"

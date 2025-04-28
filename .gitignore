@@ -5,4 +5,5 @@ cmake-build-release
 .vscode
 opencv-mobile
 *.zip
-*.yml
+build_opencv_*
+install_opencv_*

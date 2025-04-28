@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # # Group 1: Generic Linux platforms (except RISC-V)
+          # Group 1: Generic Linux platforms (except RISC-V)
           # - group: linux
           #   target: x86_64-linux-gnu
           #   os: ubuntu-22.04
@@ -29,9 +29,9 @@ jobs:
           # - group: windows
           #   target: x86_64-windows-gnu
           #   os: windows-2022
-          - group: windows
-            target: aarch64-windows-gnu
-            os: windows-2022
+          # - group: windows
+          #   target: aarch64-windows-gnu
+          #   os: windows-2022
             
           # # Group 4: macOS platforms
           # - group: macos
@@ -54,6 +54,17 @@ jobs:
           # - group: android
           #   target: x86_64-linux-android
           #   os: ubuntu-22.04
+
+         # Group 6: HarmonyOS platforms
+          - group: harmonyos
+            target: aarch64-linux-harmonyos
+            os: ubuntu-22.04
+          # - group: harmonyos
+          #   target: arm-linux-harmonyos
+          #   os: ubuntu-22.04
+          # - group: harmonyos
+          #   target: x86_64-linux-harmonyos
+          #   os: ubuntu-22.04          
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -83,6 +94,22 @@ jobs:
           add-to-path: true
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      - name: Setup HarmonyOS SDK
+        if: matrix.group == 'harmonyos'
+        shell: bash
+        run: |
+          echo "Downloading HarmonyOS SDK split archives..."
+          curl -L -o ohos-sdk-windows_linux-public.tar.gz.aa https://github.com/openharmony-rs/ohos-sdk/releases/download/v4.1/ohos-sdk-windows_linux-public.tar.gz.aa
+          curl -L -o ohos-sdk-windows_linux-public.tar.gz.ab https://github.com/openharmony-rs/ohos-sdk/releases/download/v4.1/ohos-sdk-windows_linux-public.tar.gz.ab
+          echo "Combining split archives..."
+          cat ohos-sdk-windows_linux-public.tar.gz.aa ohos-sdk-windows_linux-public.tar.gz.ab > ohos-sdk-windows_linux-public.tar.gz
+          echo "Extracting HarmonyOS SDK..."
+          tar -xzf ohos-sdk-windows_linux-public.tar.gz
+          ls -ltr ohos-sdk/linux
+          export HARMONYOS_SDK_HOME=$(pwd)/ohos-sdk/linux/native-linux-x64-4.1.0.0-Release/native
+          echo "HARMONYOS_SDK_HOME=$HARMONYOS_SDK_HOME" >> $GITHUB_ENV
+          echo "HarmonyOS SDK setup complete."
 
       - name: Download and Extract OpenCV Mobile
         shell: bash
@@ -283,7 +310,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: release-${{ env.PATH_VERSION }}-${{ env.LAST_COMMIT_DATE }}
+          tag_name: release-${{ env.PATH_VERSION }}
           name: OpenCV Mobile Release ${{ env.PATH_VERSION }} (${{ env.LAST_COMMIT_DATE }})
           body: |
             Automatic build triggered by workflow dispatch.
