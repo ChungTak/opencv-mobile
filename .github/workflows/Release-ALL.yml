@@ -9,7 +9,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Group 1: Generic Linux platforms (except RISC-V)
+          # # Group 1: Generic Linux platforms (except RISC-V)
           # - group: linux
           #   target: x86_64-linux-gnu
           #   os: ubuntu-22.04
@@ -29,9 +29,9 @@ jobs:
           # - group: windows
           #   target: x86_64-windows-gnu
           #   os: windows-2022
-          # - group: windows
-          #   target: aarch64-windows-gnu
-          #   os: windows-2022
+          - group: windows
+            target: aarch64-windows-gnu
+            os: windows-2022
             
           # # Group 4: macOS platforms
           # - group: macos
@@ -51,9 +51,9 @@ jobs:
           # - group: android
           #   target: x86-linux-android
           #   os: ubuntu-22.04
-          - group: android
-            target: x86_64-linux-android
-            os: ubuntu-22.04
+          # - group: android
+          #   target: x86_64-linux-android
+          #   os: ubuntu-22.04
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: zig-build
-          fetch-depth: 0 # Get all commits and tags
+          fetch-depth: 0
 
       # Setup Android NDK for Android targets
       - name: Setup Android NDK
@@ -90,35 +90,25 @@ jobs:
           echo "Downloading OpenCV from ${{ env.OPENCV_ZIP_URL }}..."
           if [[ "$RUNNER_OS" == "Windows" ]]; then
             # --- Windows ---
-            echo "Running PowerShell commands for download and extraction..."
-            powershell -Command "Invoke-WebRequest -Uri '${{ env.OPENCV_ZIP_URL }}' -OutFile '${{ env.OPENCV_ZIP_FILE }}'"
+            echo "Running curl/unzip commands for download and extraction..."
+            curl -L -o "${{ env.OPENCV_ZIP_FILE }}" "${{ env.OPENCV_ZIP_URL }}"
+            echo "Extracting OpenCV using unzip..."
+            unzip "${{ env.OPENCV_ZIP_FILE }}"
 
-            echo "Extracting OpenCV using PowerShell..."
-            powershell -Command "Expand-Archive -Path '${{ env.OPENCV_ZIP_FILE }}' -DestinationPath '.' -Force"
-
-            echo "Checking and renaming extracted directory (PowerShell)..."
-            # Encapsulate the conditional logic within powershell -Command
-            powershell -Command "
-              \$extractedDirWithVersion = 'opencv-mobile-${{ env.OPENCV_VERSION }}'
-              \$targetDir = '${{ env.OPENCV_DIR }}'
-              Write-Host \"Checking for '\$extractedDirWithVersion' and '\$targetDir'\"
-              if (Test-Path \$extractedDirWithVersion) {
-                  Write-Host \"Found '\$extractedDirWithVersion', renaming to '\$targetDir'...\"
-                  Move-Item -Path \$extractedDirWithVersion -Destination \$targetDir -Force
-                  Write-Host \"Renamed.\"
-              } elseif (-Not (Test-Path \$targetDir)) {
-                  Write-Error \"Directory '\$targetDir' not found after extraction, and '\$extractedDirWithVersion' was not found either.\"
-                  exit 1 # Fail the step
-              } else {
-                  Write-Host \"Directory '\$targetDir' already exists or was named correctly during extraction.\"
-              }
-            "
-            # Check if the powershell command above exited with an error
-            if [[ $? -ne 0 ]]; then
-              echo "::error::PowerShell directory check/rename failed."
+            echo "Checking and renaming extracted directory (bash)..."
+            extracted_dir_with_version="opencv-mobile-${{ env.OPENCV_VERSION }}"
+            target_dir="${{ env.OPENCV_DIR }}"
+            echo "Checking for '$extracted_dir_with_version' and '$target_dir'"
+            if [ -d "$extracted_dir_with_version" ]; then
+               echo "Found '$extracted_dir_with_version', renaming to '$target_dir'..."
+               mv "$extracted_dir_with_version" "$target_dir"
+               echo "Renamed."
+            elif [ ! -d "$target_dir" ]; then
+              echo "::error::Directory '$target_dir' not found after extraction, and '$extracted_dir_with_version' was not found either."
               exit 1
+            else
+               echo "Directory '$target_dir' already exists or was named correctly during extraction."
             fi
-
           else
             # --- Linux/macOS ---
             echo "Running curl/unzip commands for download and extraction..."
@@ -143,7 +133,7 @@ jobs:
           fi
 
           echo "OpenCV should now be in '${{ env.OPENCV_DIR }}'"
-          ls -l # List files to help debug if needed
+          ls -l
           echo "Cleaning up zip file..."
           rm "${{ env.OPENCV_ZIP_FILE }}"
           echo "Cleanup complete."
@@ -175,6 +165,14 @@ jobs:
         with:
           toolchain: vs2022
 
+      - name: Setup Git Bash for Windows
+        if: runner.os == 'Windows'
+        run: |
+          choco install git -y
+          # Ensure Git Bash is available in PATH
+          echo "C:\Program Files\Git\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "C:\Program Files\Git\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Install CMake (Windows)
         if: runner.os == 'Windows'
         run: choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
@@ -193,23 +191,36 @@ jobs:
       - name: Set Last Commit Date (YYYY-MM-DD)
         id: last-commit-date
         run: echo "LAST_COMMIT_DATE=$(git log -1 --format=%cs)" >> $GITHUB_ENV
-        shell: bash # Ensure command runs on all platforms
+        shell: bash
 
-      # --- Build Step (OS Specific) ---
-      - name: Build for ${{ matrix.target }} (Linux/macOS)
-        if: runner.os == 'Linux' || runner.os == 'macOS'
+      # Store env variables for artifact-naming and release creation
+      - name: Create environment variables file for release job
+        run: |
+          echo "PATH_VERSION=${{ env.PATH_VERSION }}" > build_env.txt
+          echo "OPENCV_VERSION=${{ env.OPENCV_VERSION }}" >> build_env.txt
+          echo "LAST_COMMIT_DATE=${{ env.LAST_COMMIT_DATE }}" >> build_env.txt
+        shell: bash
+
+      - name: Upload environment variables
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-environment
+          path: build_env.txt
+          retention-days: 1
+
+      # --- Build Step (All platforms using bash) ---
+      - name: Build for ${{ matrix.target }}
         run: |
           export OUTPUT_DIR="install_opencv_${{ matrix.target }}"
           export OPENCV_INSTALL_DIR=$(pwd)/${{ env.OPENCV_DIR }}/${{ matrix.target }}
 
-          chmod +x build_with_zig.sh # Ensure script is executable
-          # Pass OpenCV path to script, assuming script accepts --opencv_dir parameter
+          chmod +x build_with_zig.sh
           ./build_with_zig.sh --target=${{ matrix.target }}
 
           # --- Packaging ---
           if [ -d "$OUTPUT_DIR" ]; then
             RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
-            mkdir -p release/artifacts # Ensure directory exists
+            mkdir -p release/artifacts
             mv "$OUTPUT_DIR" "release/artifacts/$RELEASE_NAME"
             echo "Creating archive release/artifacts/$RELEASE_NAME.tar.gz"
             tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
@@ -220,68 +231,51 @@ jobs:
           fi
         shell: bash
 
-      - name: Build for ${{ matrix.target }} (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          $env:OUTPUT_DIR = "install_opencv_${{ matrix.target }}"
-          # Set environment variables in PowerShell to pass to script
-          $env:OPENCV_INSTALL_DIR = Join-Path (Get-Location).Path "${{ env.OPENCV_DIR }}\${{ matrix.target }}"
-
-          Write-Host "Running PowerShell build script..."
-          # Pass OpenCV path to script, assuming script accepts -opencv_dir parameter
-          powershell -ExecutionPolicy Bypass -File ./build_with_zig.ps1 -target ${{ matrix.target }}
-
-          # --- Packaging ---
-          if (Test-Path $env:OUTPUT_DIR) {
-            $RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
-            New-Item -ItemType Directory -Force -Path "release/artifacts" # Ensure directory exists
-            Move-Item -Path $env:OUTPUT_DIR -Destination "release/artifacts/$RELEASE_NAME"
-            echo "Creating archive release/artifacts/$RELEASE_NAME.tar.gz"
-            # Use tar on Windows (usually available from Git Bash or system)
-            tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
-            echo "Archive created."
-          } else {
-            Write-Error "Output directory $($env:OUTPUT_DIR) not found!"
-            exit 1
-          }
-        shell: powershell
-
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifact-${{ matrix.target }} # One artifact per target
-          # Upload the tar.gz file created in the build step
+          name: release-artifact-${{ matrix.target }}
           path: release/artifacts/opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}.tar.gz
           retention-days: 1
 
   release:
     runs-on: ubuntu-22.04
-    needs: build # Wait for all build jobs to complete
+    needs: build
     permissions:
       contents: write
     steps:
       - name: Checkout Repository (for release notes context)
         uses: actions/checkout@v4
         with:
-          # Note: Checkout is on master, but builds are done on zig-build branch
-          # This means Release Notes SHA points to master, but artifacts come from zig-build
           ref: master
-          fetch-depth: 0 # Get all history for release notes
+          fetch-depth: 0
 
-      - name: Set Last Commit Date (YYYY-MM-DD)
-        id: last-commit-date
-        # Date needed in release job too, but based on last commit to master branch
-        run: echo "LAST_COMMIT_DATE=$(git log -1 --format=%cs)" >> $GITHUB_ENV
+      - name: Download build environment variables
+        uses: actions/download-artifact@v4
+        with:
+          name: build-environment
+          path: ./
+
+      - name: Load environment variables
+        run: |
+          if [ -f "build_env.txt" ]; then
+            echo "Loading environment variables from build_env.txt"
+            cat build_env.txt >> $GITHUB_ENV
+            cat build_env.txt # Debugging output
+          else
+            echo "::error::build_env.txt not found!"
+            exit 1
+          fi
         shell: bash
 
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts # All artifacts downloaded to this directory
-          pattern: release-artifact-* # Match all target artifacts
-          merge-multiple: true # Merge all artifacts to the directory specified by path
+          path: release-artifacts
+          pattern: release-artifact-*
+          merge-multiple: true
 
-      - name: List downloaded files # Debug step to confirm files were downloaded
+      - name: List downloaded files
         run: ls -R release-artifacts
 
       - name: Create Release
@@ -289,8 +283,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # Use date or commit sha to ensure tag uniqueness if PATH_VERSION doesn't change
-          tag_name: release-${{ env.PATH_VERSION }}-${{ env.LAST_COMMIT_DATE }} # e.g., release-r32-2025-04-08
+          tag_name: release-${{ env.PATH_VERSION }}-${{ env.LAST_COMMIT_DATE }}
           name: OpenCV Mobile Release ${{ env.PATH_VERSION }} (${{ env.LAST_COMMIT_DATE }})
           body: |
             Automatic build triggered by workflow dispatch.
@@ -300,6 +293,6 @@ jobs:
             Build Version: ${{ env.PATH_VERSION }}
           draft: false
           prerelease: false
-          overwrite: true # Overwrite Tag and Release with same name
+          overwrite: true
           files: |
             release-artifacts/*.tar.gz
