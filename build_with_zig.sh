@@ -23,11 +23,14 @@ for arg in "$@"; do
       echo "  x86_64-linux-gnu      - x86_64 Linux (GNU libc)"
       echo "  aarch64-linux-gnu     - ARM64 Linux (GNU libc)"
       echo "  aarch64-linux-android     - ARM64 Android"
-      echo "  arm-linux-android         - ARM 32-bit Android"      
+      echo "  x86-linux-android         - x86 32-bit Android"      
+      echo "  x86_64-linux-android     - x86_64 Android"
+      echo "  arm-linux-android         - ARM 32-bit Android"   
       echo "  x86_64-windows-gnu    - x86_64 Windows (MinGW)"
       echo "  x86_64-macos          - x86_64 macOS"
       echo "  aarch64-macos         - ARM64 macOS"
       echo "  riscv64-linux-gnu      - RISC-V 64-bit Linux"
+      echo "  loongarch64-linux-gnu   - LoongArch64 Linux"
       exit 0
       ;;
   esac
@@ -65,8 +68,9 @@ if [ ! -f "$CMAKE_OPTIONS_FILE" ]; then
     exit 1
 fi
 
-# 创建OpenCV构建目录
+# 创建OpenCV构建目录（每次都清理，避免 CMake 缓存污染）
 OPENCV_BUILD_DIR="$PROJECT_ROOT_DIR/build_opencv_${TARGET}"
+rm -rf "$OPENCV_BUILD_DIR"
 mkdir -p "$OPENCV_BUILD_DIR"
 
 # 进入构建目录
@@ -80,11 +84,40 @@ while read -r line; do
     fi
 done < "$OPENCV_SRC_DIR/options.txt"
 
-# 构建CMake命令
-export CC="zig cc -target $TARGET"
-export CXX="zig c++ -target $TARGET"
-CMAKE_CMD="cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR"
-CMAKE_CMD="$CMAKE_CMD -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+if [[ "$TARGET" == *"-linux-android"* ]]; then
+    export ANDROID_NDK_ROOT="${ANDROID_NDK_HOME:-/dataset/datavol/sdk/android_ndk/android-ndk-r21e}"
+    HOST_TAG=linux-x86_64
+    TOOLCHAIN=$ANDROID_NDK_ROOT/toolchains/llvm/prebuilt/$HOST_TAG
+    export PATH=$TOOLCHAIN/bin:$PATH
+    ANDROID_TOOLCHAIN_FILE="$ANDROID_NDK_ROOT/build/cmake/android.toolchain.cmake"
+    ANDROID_PLATFORM=android-21
+
+    case "$TARGET" in
+        aarch64-linux-android)
+            ANDROID_ABI=arm64-v8a
+            ;;
+        arm-linux-android)
+            ANDROID_ABI=armeabi-v7a
+            ;;
+        x86_64-linux-android)
+            ANDROID_ABI=x86_64
+            ;;
+        x86-linux-android)
+            ANDROID_ABI=x86
+            ;;
+        *)
+            echo -e "${RED}未知的 Android 架构: $TARGET${NC}"
+            exit 1
+            ;;
+    esac
+
+    # toolchain 参数必须最前，其它参数和源码目录最后
+    CMAKE_CMD="cmake -DCMAKE_TOOLCHAIN_FILE=$ANDROID_TOOLCHAIN_FILE -DANDROID_ABI=$ANDROID_ABI -DANDROID_PLATFORM=$ANDROID_PLATFORM -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+else
+    export CC="zig cc -target $TARGET"
+    export CXX="zig c++ -target $TARGET"
+    CMAKE_CMD="cmake -DCMAKE_INSTALL_PREFIX=$INSTALL_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
+fi
 
 # 添加额外选项
 for option in "${CMAKE_OPTIONS[@]}"; do
