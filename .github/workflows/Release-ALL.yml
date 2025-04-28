@@ -209,7 +209,8 @@ jobs:
           retention-days: 1
 
       # --- Build Step (All platforms using bash) ---
-      - name: Build for ${{ matrix.target }}
+      - name: Build for ${{ matrix.target }} (Linux/macOS)
+        if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           export OUTPUT_DIR="install_opencv_${{ matrix.target }}"
           export OPENCV_INSTALL_DIR=$(pwd)/${{ env.OPENCV_DIR }}/${{ matrix.target }}
@@ -229,6 +230,42 @@ jobs:
             echo "::error::Output directory $OUTPUT_DIR not found!"
             exit 1
           fi
+        shell: bash
+
+      - name: Build for ${{ matrix.target }} (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Create a script to set up MSVC environment and run build_with_zig.sh
+          echo '#!/bin/bash
+          # Set up environment variables for Windows
+          export OUTPUT_DIR="install_opencv_${{ matrix.target }}"
+          export OPENCV_INSTALL_DIR="$(pwd)/${{ env.OPENCV_DIR }}/${{ matrix.target }}"
+          
+          # Ensure the script is executable
+          chmod +x build_with_zig.sh
+          
+          # Run the build script with the target
+          ./build_with_zig.sh --target=${{ matrix.target }}
+          
+          # Check if build was successful and package
+          if [ -d "$OUTPUT_DIR" ]; then
+            RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
+            mkdir -p release/artifacts
+            mv "$OUTPUT_DIR" "release/artifacts/$RELEASE_NAME"
+            echo "Creating archive release/artifacts/$RELEASE_NAME.tar.gz"
+            tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
+            echo "Archive created."
+          else
+            echo "::error::Output directory $OUTPUT_DIR not found!"
+            exit 1
+          fi
+          ' > run_build.sh
+          
+          # Make the script executable (Git Bash style)
+          chmod +x run_build.sh
+          
+          # Run it using Git Bash
+          C:\Program Files\Git\bin\bash.exe -l -c "./run_build.sh"
         shell: bash
 
       - name: Upload Artifacts
