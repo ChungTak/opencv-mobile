@@ -106,8 +106,7 @@ jobs:
           cat ohos-sdk-windows_linux-public.tar.gz.aa ohos-sdk-windows_linux-public.tar.gz.ab > ohos-sdk-windows_linux-public.tar.gz
           echo "Extracting HarmonyOS SDK..."
           tar -xzf ohos-sdk-windows_linux-public.tar.gz
-          ls -ltr ohos-sdk/linux
-          export HARMONYOS_SDK_HOME=$(pwd)/ohos-sdk/linux/native-linux-x64-4.1.0.0-Release/native
+          export HARMONYOS_SDK_HOME=$(pwd)/ohos-sdk/linux/native-linux-x64-4.1.7.5-Release/native
           echo "HARMONYOS_SDK_HOME=$HARMONYOS_SDK_HOME" >> $GITHUB_ENV
           echo "HarmonyOS SDK setup complete."
 
