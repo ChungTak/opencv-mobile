@@ -6,27 +6,59 @@ on:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - target: x86_64-linux-gnu
+          # Group 1: Generic Linux platforms (except RISC-V)
+          # - group: linux
+          #   target: x86_64-linux-gnu
+          #   os: ubuntu-22.04
+          # - group: linux
+          #   target: aarch64-linux-gnu
+          #   os: ubuntu-22.04
+          # - group: linux
+          #   target: loongarch64-linux-gnu
+          #   os: ubuntu-22.04
+
+          # # Group 2: RISC-V (separate because it has special requirements)
+          # - group: riscv
+          #   target: riscv64-linux-gnu
+          #   os: ubuntu-22.04
+            
+          # # Group 3: Windows platforms
+          # - group: windows
+          #   target: x86_64-windows-gnu
+          #   os: windows-2022
+          # - group: windows
+          #   target: aarch64-windows-gnu
+          #   os: windows-2022
+            
+          # # Group 4: macOS platforms
+          # - group: macos
+          #   target: x86_64-macos
+          #   os: macos-13
+          # - group: macos
+          #   target: aarch64-macos
+          #   os: macos-13
+            
+          # # Group 5: Android platforms
+          # - group: android
+          #   target: aarch64-linux-android
+          #   os: ubuntu-22.04
+          # - group: android
+          #   target: arm-linux-android
+          #   os: ubuntu-22.04
+          # - group: android
+          #   target: x86-linux-android
+          #   os: ubuntu-22.04
+          - group: android
+            target: x86_64-linux-android
             os: ubuntu-22.04
-          - target: aarch64-linux-gnu
-            os: ubuntu-22.04
-          - target: riscv64-linux-gnu
-            os: ubuntu-22.04
-          - target: x86_64-windows-gnu
-            os: windows-2022
-          - target: aarch64-windows-gnu
-            os: windows-2022
-          - target: x86_64-macos
-            os: macos-13 # 或者指定版本如 macos-13, macos-14
-          - target: aarch64-macos
-            os: macos-13 # 或者指定版本如 macos-13, macos-14
-    runs-on: ${{ matrix.os }} # 动态设置运行环境
+
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
     env:
-      # BUILD_DATE: ${{ github.workflow }}-${{ github.run_id }}-$(date -u +'%Y_%m_%d') # 使用下面的 LAST_COMMIT_DATE
       PATH_VERSION: r32
       OPENCV_VERSION: 4.11.0
       OPENCV_ZIP_URL: https://github.com/nihui/opencv-mobile/releases/download/v32/opencv-mobile-4.11.0.zip
@@ -38,10 +70,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: zig-build
-          fetch-depth: 0 # 获取所有提交和Tag
+          fetch-depth: 0 # Get all commits and tags
+
+      # Setup Android NDK for Android targets
+      - name: Setup Android NDK
+        if: matrix.group == 'android'
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r21e
+          local-cache: true
+          add-to-path: true
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
 
       - name: Download and Extract OpenCV Mobile
-        # Still use bash as the outer shell for the main if [[ $RUNNER_OS ]] check
         shell: bash
         run: |
           echo "Downloading OpenCV from ${{ env.OPENCV_ZIP_URL }}..."
@@ -107,7 +150,7 @@ jobs:
 
       # --- Linux Specific Setup ---
       - name: Install Linux Dependencies
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && (matrix.group == 'linux' || matrix.group == 'riscv')
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
@@ -118,12 +161,19 @@ jobs:
             gcc-riscv64-linux-gnu \
             libc6-dev-riscv64-cross
 
+      # Additional LoongArch64 setup if needed
+      - name: Install LoongArch64 Dependencies
+        if: matrix.target == 'loongarch64-linux-gnu'
+        run: |
+          # Add any specific LoongArch64 dependencies here if needed
+          echo "Setting up LoongArch64 environment"
+
       # --- Windows Specific Setup ---
       - name: Setup MSVC 2022
         if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@v1
         with:
-          toolchain: vs2022 # 确保与你的项目需求匹配
+          toolchain: vs2022
 
       - name: Install CMake (Windows)
         if: runner.os == 'Windows'
@@ -143,23 +193,23 @@ jobs:
       - name: Set Last Commit Date (YYYY-MM-DD)
         id: last-commit-date
         run: echo "LAST_COMMIT_DATE=$(git log -1 --format=%cs)" >> $GITHUB_ENV
-        shell: bash # 保证命令在所有平台运行
+        shell: bash # Ensure command runs on all platforms
 
       # --- Build Step (OS Specific) ---
       - name: Build for ${{ matrix.target }} (Linux/macOS)
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: |
           export OUTPUT_DIR="install_opencv_${{ matrix.target }}"
-          export OPENCV_INSTALL_DIR=$(pwd)/${{ env.OPENCV_DIR }}/${{ matrix.target }} # 传递解压后的 OpenCV 路径给构建脚本
+          export OPENCV_INSTALL_DIR=$(pwd)/${{ env.OPENCV_DIR }}/${{ matrix.target }}
 
-          chmod +x build_with_zig.sh # 确保脚本可执行
-          # 传递 OpenCV 路径给脚本，假设脚本接受 --opencv_dir 参数
+          chmod +x build_with_zig.sh # Ensure script is executable
+          # Pass OpenCV path to script, assuming script accepts --opencv_dir parameter
           ./build_with_zig.sh --target=${{ matrix.target }}
 
           # --- Packaging ---
           if [ -d "$OUTPUT_DIR" ]; then
             RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
-            mkdir -p release/artifacts # 确保目录存在
+            mkdir -p release/artifacts # Ensure directory exists
             mv "$OUTPUT_DIR" "release/artifacts/$RELEASE_NAME"
             echo "Creating archive release/artifacts/$RELEASE_NAME.tar.gz"
             tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
@@ -174,20 +224,20 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           $env:OUTPUT_DIR = "install_opencv_${{ matrix.target }}"
-          # PowerShell 中设置环境变量并传递给脚本
+          # Set environment variables in PowerShell to pass to script
           $env:OPENCV_INSTALL_DIR = Join-Path (Get-Location).Path "${{ env.OPENCV_DIR }}\${{ matrix.target }}"
 
           Write-Host "Running PowerShell build script..."
-          # 传递 OpenCV 路径给脚本，假设脚本接受 -opencv_dir 参数
+          # Pass OpenCV path to script, assuming script accepts -opencv_dir parameter
           powershell -ExecutionPolicy Bypass -File ./build_with_zig.ps1 -target ${{ matrix.target }}
 
           # --- Packaging ---
           if (Test-Path $env:OUTPUT_DIR) {
             $RELEASE_NAME="opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}"
-            New-Item -ItemType Directory -Force -Path "release/artifacts" # 确保目录存在
+            New-Item -ItemType Directory -Force -Path "release/artifacts" # Ensure directory exists
             Move-Item -Path $env:OUTPUT_DIR -Destination "release/artifacts/$RELEASE_NAME"
             echo "Creating archive release/artifacts/$RELEASE_NAME.tar.gz"
-            # 在 Windows 上使用 tar (通常 Git Bash 或系统自带的)
+            # Use tar on Windows (usually available from Git Bash or system)
             tar -czvf "release/artifacts/$RELEASE_NAME.tar.gz" -C "release/artifacts" "$RELEASE_NAME"
             echo "Archive created."
           } else {
@@ -199,41 +249,39 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: release-artifact-${{ matrix.target }} # 每个 target 一个 artifact
-          # 上传构建步骤中创建的正确的 tar.gz 文件
+          name: release-artifact-${{ matrix.target }} # One artifact per target
+          # Upload the tar.gz file created in the build step
           path: release/artifacts/opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}.tar.gz
           retention-days: 1
 
   release:
     runs-on: ubuntu-22.04
-    needs: build # 等待所有 build job 完成
+    needs: build # Wait for all build jobs to complete
     permissions:
       contents: write
-    # 只有在 master 分支或者特定 tag 推送时才触发 release (如果需要)
-    # if: github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/')
     steps:
       - name: Checkout Repository (for release notes context)
         uses: actions/checkout@v4
         with:
-          # 注意：这里 checkout 的是 master，但构建是在 zig-build 分支上进行的
-          # 这意味着 Release Notes 中的 SHA 指向 master，但制品来自 zig-build
+          # Note: Checkout is on master, but builds are done on zig-build branch
+          # This means Release Notes SHA points to master, but artifacts come from zig-build
           ref: master
-          fetch-depth: 0 # 获取所有历史用于 release notes
+          fetch-depth: 0 # Get all history for release notes
 
       - name: Set Last Commit Date (YYYY-MM-DD)
         id: last-commit-date
-        # 在 release job 中也需要日期，但这次基于 master 分支的最后提交
+        # Date needed in release job too, but based on last commit to master branch
         run: echo "LAST_COMMIT_DATE=$(git log -1 --format=%cs)" >> $GITHUB_ENV
         shell: bash
 
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: release-artifacts # 所有 artifact 下载到此目录
-          pattern: release-artifact-* # 匹配所有 target 的 artifact
-          merge-multiple: true # 将所有 artifact 合并到 path 指定的目录
+          path: release-artifacts # All artifacts downloaded to this directory
+          pattern: release-artifact-* # Match all target artifacts
+          merge-multiple: true # Merge all artifacts to the directory specified by path
 
-      - name: List downloaded files # 调试步骤，确认文件已下载
+      - name: List downloaded files # Debug step to confirm files were downloaded
         run: ls -R release-artifacts
 
       - name: Create Release
@@ -241,8 +289,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # 使用日期或 commit sha 来确保 tag 唯一性，如果 PATH_VERSION 不变的话
-          tag_name: release-${{ env.PATH_VERSION }}-${{ env.LAST_COMMIT_DATE }} # 例如 release-r32-2025-04-08
+          # Use date or commit sha to ensure tag uniqueness if PATH_VERSION doesn't change
+          tag_name: release-${{ env.PATH_VERSION }}-${{ env.LAST_COMMIT_DATE }} # e.g., release-r32-2025-04-08
           name: OpenCV Mobile Release ${{ env.PATH_VERSION }} (${{ env.LAST_COMMIT_DATE }})
           body: |
             Automatic build triggered by workflow dispatch.
@@ -252,6 +300,6 @@ jobs:
             Build Version: ${{ env.PATH_VERSION }}
           draft: false
           prerelease: false
-          overwrite: true # 覆盖同名 Tag 和 Release
+          overwrite: true # Overwrite Tag and Release with same name
           files: |
             release-artifacts/*.tar.gz
