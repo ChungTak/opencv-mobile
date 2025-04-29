@@ -1,5 +1,8 @@
 name: Release Build ALL Platforms
 
+# 以下变量要根据实际情况修改
+# PATH_VERSION: r32
+# OPENCV_VERSION: 4.11.0
 on:
   workflow_dispatch:
 
@@ -10,61 +13,61 @@ jobs:
       matrix:
         include:
           # Group 1: Generic Linux platforms (except RISC-V)
-          # - group: linux
-          #   target: x86_64-linux-gnu
-          #   os: ubuntu-22.04
-          # - group: linux
-          #   target: aarch64-linux-gnu
-          #   os: ubuntu-22.04
-          # - group: linux
-          #   target: loongarch64-linux-gnu
-          #   os: ubuntu-22.04
+          - group: linux
+            target: x86_64-linux-gnu
+            os: ubuntu-22.04
+          - group: linux
+            target: aarch64-linux-gnu
+            os: ubuntu-22.04
+          - group: linux
+            target: loongarch64-linux-gnu
+            os: ubuntu-22.04
 
-          # # Group 2: RISC-V (separate because it has special requirements)
-          # - group: riscv
-          #   target: riscv64-linux-gnu
-          #   os: ubuntu-22.04
+          # Group 2: RISC-V (separate because it has special requirements)
+          - group: riscv
+            target: riscv64-linux-gnu
+            os: ubuntu-22.04
             
-          # # Group 3: Windows platforms
-          # - group: windows
-          #   target: x86_64-windows-gnu
-          #   os: windows-2022
-          # - group: windows
-          #   target: aarch64-windows-gnu
-          #   os: windows-2022
+          # Group 3: Windows platforms
+          - group: windows
+            target: x86_64-windows-gnu
+            os: windows-2022
+          - group: windows
+            target: aarch64-windows-gnu
+            os: windows-2022
             
-          # # Group 4: macOS platforms
-          # - group: macos
-          #   target: x86_64-macos
-          #   os: macos-13
-          # - group: macos
-          #   target: aarch64-macos
-          #   os: macos-13
+          # Group 4: macOS platforms
+          - group: macos
+            target: x86_64-macos
+            os: macos-13
+          - group: macos
+            target: aarch64-macos
+            os: macos-13
             
-          # # Group 5: Android platforms
-          # - group: android
-          #   target: aarch64-linux-android
-          #   os: ubuntu-22.04
-          # - group: android
-          #   target: arm-linux-android
-          #   os: ubuntu-22.04
-          # - group: android
-          #   target: x86-linux-android
-          #   os: ubuntu-22.04
-          # - group: android
-          #   target: x86_64-linux-android
-          #   os: ubuntu-22.04
+          # Group 5: Android platforms
+          - group: android
+            target: aarch64-linux-android
+            os: ubuntu-22.04
+          - group: android
+            target: arm-linux-android
+            os: ubuntu-22.04
+          - group: android
+            target: x86-linux-android
+            os: ubuntu-22.04
+          - group: android
+            target: x86_64-linux-android
+            os: ubuntu-22.04
 
          # Group 6: HarmonyOS platforms
           - group: harmonyos
             target: aarch64-linux-harmonyos
             os: ubuntu-22.04
-          # - group: harmonyos
-          #   target: arm-linux-harmonyos
-          #   os: ubuntu-22.04
-          # - group: harmonyos
-          #   target: x86_64-linux-harmonyos
-          #   os: ubuntu-22.04          
+          - group: harmonyos
+            target: arm-linux-harmonyos
+            os: ubuntu-22.04
+          - group: harmonyos
+            target: x86_64-linux-harmonyos
+            os: ubuntu-22.04          
 
     runs-on: ${{ matrix.os }}
     permissions:
@@ -331,7 +334,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: release-${{ env.PATH_VERSION }}
-          name: OpenCV Mobile Release ${{ env.PATH_VERSION }} (${{ env.LAST_COMMIT_DATE }})
+          name: OpenCV Mobile Release ${{ env.PATH_VERSION }}
           body: |
             Automatic build triggered by workflow dispatch.
             Build artifacts based on zig-build branch commit associated with run ID ${{ github.run_id }}.
