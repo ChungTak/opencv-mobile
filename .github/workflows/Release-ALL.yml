@@ -8,6 +8,10 @@ on:
 
 jobs:
   build:
+    outputs:
+      PATH_VERSION: ${{ steps.export-env.outputs.PATH_VERSION }}
+      OPENCV_VERSION: ${{ steps.export-env.outputs.OPENCV_VERSION }}
+      LAST_COMMIT_DATE: ${{ steps.set-date.outputs.LAST_COMMIT_DATE }}
     strategy:
       fail-fast: false
       matrix:
@@ -246,19 +250,10 @@ jobs:
       # Store env variables for artifact-naming and release creation
       - name: Create environment variables file for release job
         run: |
-          echo "PATH_VERSION=${{ env.PATH_VERSION }}" > build_env.txt
-          echo "OPENCV_VERSION=${{ env.OPENCV_VERSION }}" >> build_env.txt
-          echo "LAST_COMMIT_DATE=${{ env.LAST_COMMIT_DATE }}" >> build_env.txt
+          echo "PATH_VERSION=${{ env.PATH_VERSION }}" >> $GITHUB_OUTPUT
+          echo "OPENCV_VERSION=${{ env.OPENCV_VERSION }}" >> $GITHUB_OUTPUT
+          echo "LAST_COMMIT_DATE=${{ env.LAST_COMMIT_DATE }}" >> $GITHUB_OUTPUT
         shell: bash
-
-      - name: Upload environment variables
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-environment
-          path: build_env.txt
-          overwrite: true
-          include-hidden-files: false
-          retention-days: 1
 
       # --- Build Step (All platforms using bash) ---
       - name: Build for ${{ matrix.target }}
@@ -304,24 +299,6 @@ jobs:
           ref: master
           fetch-depth: 0
 
-      - name: Download build environment variables
-        uses: actions/download-artifact@v4
-        with:
-          name: build-environment
-          path: ./
-
-      - name: Load environment variables
-        run: |
-          if [ -f "build_env.txt" ]; then
-            echo "Loading environment variables from build_env.txt"
-            cat build_env.txt >> $GITHUB_ENV
-            cat build_env.txt # Debugging output
-          else
-            echo "::error::build_env.txt not found!"
-            exit 1
-          fi
-        shell: bash
-
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
@@ -337,14 +314,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: release-${{ env.PATH_VERSION }}
-          name: OpenCV Mobile Release ${{ env.PATH_VERSION }}
+          tag_name: release-${{ needs.build.outputs.PATH_VERSION }}
+          name: OpenCV Mobile Release ${{ needs.build.outputs.PATH_VERSION }}
           body: |
             Automatic build triggered by workflow dispatch.
             Build artifacts based on zig-build branch commit associated with run ID ${{ github.run_id }}.
             Release tagged on master branch commit ${{ github.sha }}.
-            OpenCV Version: ${{ env.OPENCV_VERSION }}
-            Build Version: ${{ env.PATH_VERSION }}
+            OpenCV Version: ${{ needs.build.outputs.OPENCV_VERSION }}
+            Build Version: ${{ needs.build.outputs.PATH_VERSION }}
           draft: false
           prerelease: false
           overwrite: true
