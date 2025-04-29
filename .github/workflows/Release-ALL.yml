@@ -256,6 +256,8 @@ jobs:
         with:
           name: build-environment
           path: build_env.txt
+          overwrite: true
+          include-hidden-files: false
           retention-days: 1
 
       # --- Build Step (All platforms using bash) ---
@@ -286,6 +288,8 @@ jobs:
         with:
           name: release-artifact-${{ matrix.target }}
           path: release/artifacts/opencv-mobile-${{ env.OPENCV_VERSION }}-${{ env.PATH_VERSION }}-${{ matrix.target }}.tar.gz
+          overwrite: true
+          include-hidden-files: false
           retention-days: 1
 
   release:
