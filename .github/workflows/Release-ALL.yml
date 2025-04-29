@@ -118,7 +118,7 @@ jobs:
           echo "ohos-sdk"
           ls ohos-sdk
           echo "$(pwd)/ohos-sdk/linux"
-          ls $(pwd)/ohos-sdk
+          ls $(pwd)/ohos-sdk/linux
           export HARMONYOS_SDK_HOME=$(find $(pwd)/ohos-sdk/linux -type d -name native | head -n 1)
           echo "HARMONYOS_SDK_HOME1=$HARMONYOS_SDK_HOME"
           echo "HARMONYOS_SDK_HOME=$HARMONYOS_SDK_HOME" >> $GITHUB_ENV
