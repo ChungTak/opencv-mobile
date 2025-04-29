@@ -117,10 +117,13 @@ jobs:
           ls -ltr
           echo "ohos-sdk"
           ls ohos-sdk
-          echo "$(pwd)/ohos-sdk"
+          echo "$(pwd)/ohos-sdk/linux"
           ls $(pwd)/ohos-sdk
           export HARMONYOS_SDK_HOME=$(find $(pwd)/ohos-sdk/linux -type d -name native | head -n 1)
+          echo "HARMONYOS_SDK_HOME1=$HARMONYOS_SDK_HOME"
           echo "HARMONYOS_SDK_HOME=$HARMONYOS_SDK_HOME" >> $GITHUB_ENV
+          echo "HARMONYOS_SDK_HOME2=$HARMONYOS_SDK_HOME"
+          echo "$HARMONYOS_SDK_HOME/build/cmake/ohos.toolchain.cmake"
           if [ ! -f "$HARMONYOS_SDK_HOME/build/cmake/ohos.toolchain.cmake" ]; then
             echo "::error::HarmonyOS toolchain file not found at $HARMONYOS_SDK_HOME/build/cmake/ohos.toolchain.cmake"
             exit 1
