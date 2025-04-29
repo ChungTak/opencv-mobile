@@ -112,6 +112,13 @@ jobs:
           cat ohos-sdk-windows_linux-public.tar.gz.aa ohos-sdk-windows_linux-public.tar.gz.ab > ohos-sdk-windows_linux-public.tar.gz
           echo "Extracting HarmonyOS SDK..."
           tar -xzf ohos-sdk-windows_linux-public.tar.gz
+          pwd
+          echo "ls -ltr"
+          ls -ltr
+          echo "ohos-sdk"
+          ls ohos-sdk
+          echo "$(pwd)/ohos-sdk"
+          ls $(pwd)/ohos-sdk
           export HARMONYOS_SDK_HOME=$(find $(pwd)/ohos-sdk/linux -type d -name native | head -n 1)
           echo "HARMONYOS_SDK_HOME=$HARMONYOS_SDK_HOME" >> $GITHUB_ENV
           if [ ! -f "$HARMONYOS_SDK_HOME/build/cmake/ohos.toolchain.cmake" ]; then
